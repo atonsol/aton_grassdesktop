@@ -244,7 +244,7 @@ def print_status(device_status):
         print(f"{i}. {Fore.GREEN + Style.BRIGHT}🔔 PING: {info['ping_count']} |{Fore.CYAN + Style.BRIGHT} 🌐 IP: {masked_ip} | {info['isp']} {Style.RESET_ALL}|{Fore.YELLOW + Style.BRIGHT} 🚀  STATUS: {info['status']}", flush=True)
 # Main function
 async def main():
-    proxies = read_proxies('proxy.txt')
+    proxies = read_proxies('proxy_list.txt')
     check_proxy = input("Do you want to check proxies? (y/n): ").strip().lower()
     
     if check_proxy == 'y':
