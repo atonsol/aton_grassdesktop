@@ -1,4 +1,4 @@
-﻿import json
+import json
 import asyncio
 import random
 import ssl
@@ -9,6 +9,7 @@ from websockets_proxy import Proxy, proxy_connect
 from colorama import init, Fore, Style
 import requests
 import websockets
+from concurrent.futures import ThreadPoolExecutor
 
 # Initialize colorama
 init(autoreset=True)
@@ -24,11 +25,6 @@ def read_proxies(file_path):
     with open(file_path, 'r') as file:
         proxies = [line.strip() for line in file.readlines()]
     return proxies
-
-
-from concurrent.futures import ThreadPoolExecutor
-
- 
 
 def filter_proxies(proxies):
     valid_proxies = []
@@ -50,7 +46,6 @@ def filter_proxies(proxies):
     valid_proxies = [proxy for proxy in results if proxy is not None]
     return valid_proxies
 
- 
 def remove_proxy_from_file(proxy, file_path):
     with open(file_path, 'r') as file:
         lines = file.readlines()
@@ -59,6 +54,46 @@ def remove_proxy_from_file(proxy, file_path):
             if line.strip() != proxy:
                 file.write(line)
 
+# User-Agent Generator
+def generate_user_agents():
+    chrome_versions = [
+        "126.0.0.0", "127.0.0.0", "128.0.0.0", "129.0.0.0", "130.0.0.0"
+    ]
+    edge_versions = [
+        "126.0.0.0", "127.0.0.0", "128.0.0.0", "129.0.0.0", "130.0.0.0"
+    ]
+    
+    def create_user_agent(browser, version):
+        return f"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) {browser}/{version} Safari/537.36"
+    
+    user_agents = []
+    
+    # Chrome User Agents
+    for version in chrome_versions:
+        user_agents.append(create_user_agent("Chrome", version))
+    
+    # Edge User Agents
+    for version in edge_versions:
+        user_agents.append(create_user_agent("Edg", version))
+    
+    return user_agents
+
+# Persistent User-Agent per Proxy
+def get_persistent_user_agent(socks5_proxy):
+    # Create a consistent device ID based on the proxy
+    device_namespace = uuid.uuid3(uuid.NAMESPACE_DNS, socks5_proxy)
+    
+    # Seed the random generator with this device namespace
+    random.seed(device_namespace.int)
+    
+    # Generate user agents once per proxy
+    user_agents = generate_user_agents()
+    selected_user_agent = random.choice(user_agents)
+    
+    # Reset the random seed to ensure randomness elsewhere
+    random.seed()
+    
+    return selected_user_agent
 
 # Function to login and get user info
 def login_and_get_user_info(proxy):
@@ -104,8 +139,6 @@ def login_and_get_user_info(proxy):
                 logger.error("Max retries reached. Exiting.")
                 raise
 
- 
-
 # Function to get public IP and ISP
 def get_public_ip_and_isp(proxy):
     attempts = 0
@@ -123,7 +156,6 @@ def get_public_ip_and_isp(proxy):
             if attempts >= 5:
                 return "Unavailable", "Unavailable"
             time.sleep(1)  # Optional: Add a delay before retrying
- 
 
 # Function to connect to WebSocket
 async def connect_to_wss(socks5_proxy, user_id, device_status):
@@ -134,16 +166,29 @@ async def connect_to_wss(socks5_proxy, user_id, device_status):
 
     while True:
         try:
-            # await asyncio.sleep(random.randint(1, 10) / 10)
+            # URI list for random selection
+            urilist = [
+                #"wss://proxy.wynd.network:4444/",
+                #"wss://proxy.wynd.network:4650/",
+                "wss://proxy2.wynd.network:4444", 
+                "wss://proxy2.wynd.network:4650"
+                #"wss://proxy3.wynd.network:4444/", 
+                #"wss://proxy3.wynd.network:4650/"
+            ]
+            uri = random.choice(urilist)
+            
+            # Persistent User-Agent for this proxy
             custom_headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36 Edg/130.0.0.0",
-          
+                "User-Agent": get_persistent_user_agent(socks5_proxy)
             }
+            
             ssl_context = ssl.create_default_context()
             ssl_context.check_hostname = False
             ssl_context.verify_mode = ssl.CERT_NONE
-            uri = "wss://proxy2.wynd.network:4650/"
-            server_hostname = "proxy2.wynd.network"
+            
+            # Extract server hostname from the randomly chosen URI
+            server_hostname = uri.split("://")[1].split(":")[0]
+            
             proxy = Proxy.from_url(socks5_proxy)
             
             async with proxy_connect(uri, proxy=proxy, ssl=ssl_context, server_hostname=server_hostname,
@@ -166,8 +211,7 @@ async def connect_to_wss(socks5_proxy, user_id, device_status):
                             device_status[device_id]["ping_count"] += 1
                             device_status[device_id]["status"] = f"{Fore.YELLOW+Style.BRIGHT}Sending Ping"
                             print_status(device_status)
-                            # await asyncio.sleep(5)
-                            # device_status[device_id]["status"] = "Success. Wait for 5 seconds"
+                            
                             for i in range(60, 0, -1):
                                 device_status[device_id]["status"] = f"{Fore.GREEN+Style.BRIGHT}Ping Success. Next in {i} seconds"
                                 print_status(device_status)
@@ -242,6 +286,7 @@ def print_status(device_status):
         else:
             masked_ip = "Invalid IP"
         print(f"{i}. {Fore.GREEN + Style.BRIGHT}🔔 PING: {info['ping_count']} |{Fore.CYAN + Style.BRIGHT} 🌐 IP: {masked_ip} | {info['isp']} {Style.RESET_ALL}|{Fore.YELLOW + Style.BRIGHT} 🚀  STATUS: {info['status']}", flush=True)
+
 # Main function
 async def main():
     proxies = read_proxies('proxy_list.txt')
