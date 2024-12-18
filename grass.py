@@ -26,34 +26,6 @@ def read_proxies(file_path):
         proxies = [line.strip() for line in file.readlines()]
     return proxies
 
-def filter_proxies(proxies):
-    valid_proxies = []
-    
-    def check_proxy(proxy):
-        ip, isp_info = get_public_ip_and_isp(proxy)
-        print(ip, isp_info)
-        if "Type: HOSTING" not in isp_info:
-            print("Proxy is Residential")
-            return proxy
-        else:
-            print("Proxy is Hosting, removing...")
-            remove_proxy_from_file(proxy, 'proxy_list.txt')
-            return None
-
-    with ThreadPoolExecutor(max_workers=10) as executor:
-        results = executor.map(check_proxy, proxies)
-    
-    valid_proxies = [proxy for proxy in results if proxy is not None]
-    return valid_proxies
-
-def remove_proxy_from_file(proxy, file_path):
-    with open(file_path, 'r') as file:
-        lines = file.readlines()
-    with open(file_path, 'w') as file:
-        for line in lines:
-            if line.strip() != proxy:
-                file.write(line)
-
 # User-Agent Generator
 def generate_user_agents():
     chrome_versions = [
@@ -290,21 +262,12 @@ def print_status(device_status):
 # Main function
 async def main():
     proxies = read_proxies('proxy_list.txt')
-    check_proxy = input("Do you want to check proxies? (y/n): ").strip().lower()
     
-    if check_proxy == 'y':
-        valid_proxies = filter_proxies(proxies)
-        if not valid_proxies:
-            print("No valid proxies found.")
-            return
-    else:
-        valid_proxies = proxies
-    
-    user_id = login_and_get_user_info(valid_proxies[0])  # Assuming login with the first valid proxy
+    user_id = login_and_get_user_info(proxies[0])  # Assuming login with the first valid proxy
     device_status = {}
     
     # Start connecting to each proxy immediately
-    tasks = [asyncio.create_task(connect_to_wss(proxy, user_id, device_status)) for proxy in valid_proxies]
+    tasks = [asyncio.create_task(connect_to_wss(proxy, user_id, device_status)) for proxy in proxies]
 
     # Wait for all tasks to complete
     await asyncio.gather(*tasks)
